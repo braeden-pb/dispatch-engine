@@ -1,0 +1,74 @@
+package match
+
+import (
+	"math"
+	"testing"
+
+	"dispatch-engine/internal/store"
+)
+
+// TestHaversineDistance checks the distance calculation against a pair of
+// real-world coordinates with a known, independently-verifiable distance.
+// Downtown Toronto to Pearson Airport is commonly cited as ~20-22km by
+// road/air, so we assert the result falls in a reasonable window rather
+// than pinning an exact float (great-circle "as the crow flies" distance
+// will differ slightly from any single published road/flight distance).
+func TestHaversineDistance(t *testing.T) {
+	const (
+		torontoLat = 43.6532
+		torontoLng = -79.3832
+		pearsonLat = 43.6777
+		pearsonLng = -79.6248
+	)
+
+	got := haversineDistance(torontoLat, torontoLng, pearsonLat, pearsonLng)
+
+	const wantMin = 18.0
+	const wantMax = 24.0
+	if got < wantMin || got > wantMax {
+		t.Errorf("haversineDistance(Toronto, Pearson) = %.2f km, want between %.1f and %.1f km", got, wantMin, wantMax)
+	}
+}
+
+// TestHaversineDistance_SamePoint checks the degenerate case: distance from
+// a point to itself must be zero. This catches sign errors or bad edge-case
+// handling in the trig that a single "normal" test case might miss.
+func TestHaversineDistance_SamePoint(t *testing.T) {
+	got := haversineDistance(43.65, -79.38, 43.65, -79.38)
+
+	// Floating point trig won't land on an exact 0.0, so we check it's
+	// within a tiny epsilon instead of asserting equality outright.
+	const epsilon = 0.0001
+	if math.Abs(got) > epsilon {
+		t.Errorf("haversineDistance(same point) = %.6f km, want ~0", got)
+	}
+}
+
+// TestFindNearestDriver_ReturnsClosest checks the core matching behavior:
+// given a rider location and multiple drivers, the closer driver wins.
+func TestFindNearestDriver_ReturnsClosest(t *testing.T) {
+	drivers := []store.DriverLocation{
+		{DriverID: "far", Lat: 43.70, Lng: -79.40},
+		{DriverID: "near", Lat: 43.65, Lng: -79.38},
+	}
+
+	riderLat, riderLng := 43.66, -79.39
+
+	got, ok := FindNearestDriver(riderLat, riderLng, drivers)
+	if !ok {
+		t.Fatal("FindNearestDriver returned ok=false, want ok=true")
+	}
+	if got.DriverID != "near" {
+		t.Errorf("FindNearestDriver returned driver %q, want %q", got.DriverID, "near")
+	}
+}
+
+// TestFindNearestDriver_EmptySlice checks the guard clause: no drivers
+// available should return ok=false, not a zero-value driver mistaken for
+// a real match.
+func TestFindNearestDriver_EmptySlice(t *testing.T) {
+	_, ok := FindNearestDriver(43.66, -79.39, []store.DriverLocation{})
+	if ok {
+		t.Error("FindNearestDriver with empty slice returned ok=true, want ok=false")
+	}
+}

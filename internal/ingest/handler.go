@@ -2,7 +2,6 @@ package ingest
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"time"
 
@@ -88,7 +87,6 @@ func (h *Handler) PostMatch(w http.ResponseWriter, r *http.Request) {
 
 	drivers := h.Store.All()
 
-	log.Printf("PostMatch: got %d drivers from store", len(drivers)) // TEMP DEBUG — remove after
 	nearest, ok := match.FindNearestDriver(req.RiderLat, req.RiderLng, drivers)
 	if !ok {
 		http.Error(w, "no drivers available", http.StatusNotFound)

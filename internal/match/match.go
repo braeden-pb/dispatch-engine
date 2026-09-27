@@ -1,7 +1,6 @@
 package match
 
 import (
-	"log"
 	"math"
 
 	"dispatch-engine/internal/store"
@@ -37,10 +36,8 @@ func FindNearestDriver(riderLat, riderLng float64, drivers []store.DriverLocatio
 	var zero store.DriverLocation
 
 	if len(drivers) == 0 {
-		log.Printf("FindNearestDriver: empty slice, returning false") // TEMP DEBUG
 		return zero, false
 	}
-	log.Printf("FindNearestDriver: got %d drivers, proceeding", len(drivers)) // TEMP DEBUG
 
 	nearest := drivers[0]
 	minDistance := haversineDistance(riderLat, riderLng, nearest.Lat, nearest.Lng)
