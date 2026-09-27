@@ -9,10 +9,6 @@ import (
 	"dispatch-engine/internal/store"
 )
 
-// Handler wires HTTP requests into the store. This layer is deliberately
-// "dumb plumbing" — parse JSON, validate, write to store. The interesting
-// engineering (matching, concurrency correctness, later: partitioning by
-// geohash) happens elsewhere.
 type Handler struct {
 	Store *store.MemStore
 }
@@ -32,8 +28,6 @@ type matchRequest struct {
 	RiderLng float64 `json:"rider_lng"`
 }
 
-// PostLocation handles POST /drivers/location
-// Body: {"driver_id": "d-123", "lat": 43.65, "lng": -79.38}
 func (h *Handler) PostLocation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -71,15 +65,11 @@ func (h *Handler) PostLocation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// GetDrivers handles GET /drivers — returns every known driver location.
-// Mostly here so you can curl something and see state without a DB client.
 func (h *Handler) GetDrivers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(h.Store.All())
 }
 
-// PostMatch handles POST /match
-// Body: {"rider_lat": 43.65, "rider_lng": -79.38}
 func (h *Handler) PostMatch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -103,8 +93,10 @@ func (h *Handler) PostMatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	drivers := h.Store.All()
+	const gridCellSizeDeg = 0.05
+	index := match.BuildGridIndex(drivers, gridCellSizeDeg)
 
-	nearest, ok := match.FindNearestDriver(req.RiderLat, req.RiderLng, drivers)
+	nearest, ok := match.FindNearestDriverGridIndexed(req.RiderLat, req.RiderLng, index, gridCellSizeDeg)
 	if !ok {
 		http.Error(w, "no drivers available", http.StatusNotFound)
 		return

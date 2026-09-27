@@ -14,12 +14,6 @@ type DriverLocation struct {
 }
 
 // MemStore is a thread-safe in-memory store of the latest location per driver.
-//
-// This is intentionally naive: a single map guarded by a mutex. It works fine
-// for one process and a handful of writers/readers. It will NOT work once you
-// have multiple service instances (each would have its own copy of the map) —
-// that's the exact problem Redis solves later, once you get there. Don't skip
-// ahead to Redis until you've felt this limitation yourself.
 type MemStore struct {
 	mu        sync.RWMutex
 	locations map[string]DriverLocation
@@ -39,7 +33,6 @@ func (s *MemStore) Upsert(loc DriverLocation) {
 }
 
 // All returns a snapshot copy of every known driver location.
-// Copying under the lock keeps callers from racing with future writes.
 func (s *MemStore) All() []DriverLocation {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
