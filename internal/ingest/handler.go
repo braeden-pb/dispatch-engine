@@ -93,10 +93,13 @@ func (h *Handler) PostMatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	drivers := h.Store.All()
-	const gridCellSizeDeg = 0.05
+	const (
+		gridCellSizeDeg = 0.05
+		maxSearchRings  = 3
+	)
 	index := match.BuildGridIndex(drivers, gridCellSizeDeg)
 
-	nearest, ok := match.FindNearestDriverGridIndexed(req.RiderLat, req.RiderLng, index, gridCellSizeDeg)
+	nearest, ok := match.FindNearestDriverExpandingRing(req.RiderLat, req.RiderLng, index, gridCellSizeDeg, maxSearchRings)
 	if !ok {
 		http.Error(w, "no drivers available", http.StatusNotFound)
 		return

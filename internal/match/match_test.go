@@ -138,3 +138,44 @@ func BenchmarkFindNearestDriverGridIndexed(b *testing.B) {
 		FindNearestDriverGridIndexed(43.65, -79.38, index, cellSize)
 	}
 }
+
+// TestFindNearestDriverExpandingRing_SparseFallback asserts that when the
+// immediate 3x3 neighborhood (rings 0 and 1) is completely empty, the search
+// successfully expands to outer rings (ring 2+) without returning a false 404.
+func TestFindNearestDriverExpandingRing_SparseFallback(t *testing.T) {
+	const cellSize = 0.05
+	riderLat, riderLng := 43.65, -79.38
+
+	// Place a driver exactly 2 cells away in latitude (~11 km north)
+	// Outer ring k=2: distance is 2 * cellSize = 0.10 degrees offset
+	farDriver := store.DriverLocation{
+		DriverID: "suburban-driver",
+		Lat:      riderLat + 2.0*cellSize,
+		Lng:      riderLng,
+	}
+
+	drivers := []store.DriverLocation{farDriver}
+	index := BuildGridIndex(drivers, cellSize)
+
+	// 1. Fixed 3x3 scan (k=1) must fail to locate the driver
+	_, ok3x3 := FindNearestDriverGridIndexed(riderLat, riderLng, index, cellSize)
+	if ok3x3 {
+		t.Fatal("FindNearestDriverGridIndexed found driver unexpectedly in 3x3 neighborhood")
+	}
+
+	// 2. Expanding ring up to maxRings=1 must also fail
+	_, okRing1 := FindNearestDriverExpandingRing(riderLat, riderLng, index, cellSize, 1)
+	if okRing1 {
+		t.Fatal("FindNearestDriverExpandingRing found driver when maxRings was restricted to 1")
+	}
+
+	// 3. Expanding ring up to maxRings=2 or higher must successfully locate the driver
+	matchedDriver, okRing2 := FindNearestDriverExpandingRing(riderLat, riderLng, index, cellSize, 2)
+	if !okRing2 {
+		t.Fatalf("FindNearestDriverExpandingRing failed to find driver in ring 2, got ok=false")
+	}
+
+	if matchedDriver.DriverID != "suburban-driver" {
+		t.Errorf("matched driver = %q, want %q", matchedDriver.DriverID, "suburban-driver")
+	}
+}

@@ -7,17 +7,22 @@ import (
 	"dispatch-engine/internal/store"
 )
 
+func gridIndex(value, cellSizeDeg float64) int64 {
+	const epsilon = 1e-9
+	return int64(math.Floor((value + epsilon) / cellSizeDeg))
+}
+
 // GridKey buckets a lat/lng pair into a grid cell identifier.
 func GridKey(lat, lng, cellSizeDeg float64) string {
-	latIdx := int64(math.Floor(lat / cellSizeDeg))
-	lngIdx := int64(math.Floor(lng / cellSizeDeg))
+	latIdx := gridIndex(lat, cellSizeDeg)
+	lngIdx := gridIndex(lng, cellSizeDeg)
 	return fmt.Sprintf("%d:%d", latIdx, lngIdx)
 }
 
 // NeighborKeys returns the center grid cell and all 8 immediate adjacent cells.
 func NeighborKeys(lat, lng, cellSizeDeg float64) []string {
-	riderLatIdx := int64(math.Floor(lat / cellSizeDeg))
-	riderLngIdx := int64(math.Floor(lng / cellSizeDeg))
+	riderLatIdx := gridIndex(lat, cellSizeDeg)
+	riderLngIdx := gridIndex(lng, cellSizeDeg)
 
 	keys := make([]string, 0, 9)
 	for di := int64(-1); di <= 1; di++ {
@@ -38,19 +43,31 @@ func BuildGridIndex(drivers []store.DriverLocation, cellSizeDeg float64) map[str
 	return index
 }
 
-// FindNearestDriverGridIndexed finds the nearest driver by scanning neighbor cells.
+// FindNearestDriverGridIndexed finds the nearest driver by scanning only the
+// rider's current grid cell and its immediate neighbors, without allocating a
+// temporary candidate slice for the whole neighborhood.
 func FindNearestDriverGridIndexed(riderLat, riderLng float64, index map[string][]store.DriverLocation, cellSizeDeg float64) (store.DriverLocation, bool) {
-	var candidates []store.DriverLocation
+	var nearest store.DriverLocation
+	var found bool
+	var minDistance float64
+
 	for _, key := range NeighborKeys(riderLat, riderLng, cellSizeDeg) {
-		candidates = append(candidates, index[key]...)
+		for _, driver := range index[key] {
+			distance := haversineDistance(riderLat, riderLng, driver.Lat, driver.Lng)
+			if !found || distance < minDistance {
+				nearest = driver
+				minDistance = distance
+				found = true
+			}
+		}
 	}
 
-	if len(candidates) == 0 {
+	if !found {
 		var zero store.DriverLocation
 		return zero, false
 	}
 
-	return FindNearestDriver(riderLat, riderLng, candidates)
+	return nearest, true
 }
 
 // toRadians converts degrees to radians (Go's math funcs expect radians).
@@ -94,4 +111,64 @@ func FindNearestDriver(riderLat, riderLng float64, drivers []store.DriverLocatio
 	}
 
 	return nearest, true
+}
+
+// RingKeys returns the cell keys forming the outer perimeter at Chebyshev distance k.
+// k = 0: [center] (1 cell)
+// k = 1: 3x3 perimeter excluding center (8 cells)
+// k = 2: 5x5 perimeter excluding 3x3 (16 cells)
+func RingKeys(lat, lng, cellSizeDeg float64, k int64) []string {
+	if k < 0 {
+		return nil
+	}
+	if k == 0 {
+		return []string{GridKey(lat, lng, cellSizeDeg)}
+	}
+
+	latIdx := gridIndex(lat, cellSizeDeg)
+	lngIdx := gridIndex(lng, cellSizeDeg)
+
+	keys := make([]string, 0, 8*k)
+	for di := -k; di <= k; di++ {
+		for dj := -k; dj <= k; dj++ {
+			if int64(math.Abs(float64(di))) == k || int64(math.Abs(float64(dj))) == k {
+				keys = append(keys, fmt.Sprintf("%d:%d", latIdx+di, lngIdx+dj))
+			}
+		}
+	}
+	return keys
+}
+
+// FindNearestDriverExpandingRing searches outward ring-by-ring up to maxRings.
+// Dense lookups terminate at ring 0 or 1, while sparse lookups expand gracefully.
+func FindNearestDriverExpandingRing(
+	riderLat, riderLng float64,
+	index map[string][]store.DriverLocation,
+	cellSizeDeg float64,
+	maxRings int64,
+) (store.DriverLocation, bool) {
+	var nearest store.DriverLocation
+	var found bool
+	var minDistance float64
+
+	for ring := int64(0); ring <= maxRings; ring++ {
+		for _, key := range RingKeys(riderLat, riderLng, cellSizeDeg, ring) {
+			for _, driver := range index[key] {
+				dist := haversineDistance(riderLat, riderLng, driver.Lat, driver.Lng)
+				if !found || dist < minDistance {
+					nearest = driver
+					minDistance = dist
+					found = true
+				}
+			}
+		}
+
+		// Early exit: once a driver is discovered in the inner ring, return immediately
+		if found {
+			return nearest, true
+		}
+	}
+
+	var zero store.DriverLocation
+	return zero, false
 }
