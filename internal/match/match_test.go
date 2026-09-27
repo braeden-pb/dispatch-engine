@@ -91,3 +91,50 @@ func BenchmarkFindNearestDriver(b *testing.B) {
 		FindNearestDriver(43.65, -79.38, drivers)
 	}
 }
+
+// TestFindNearestDriverGridIndexed_MatchesFullScan verifies the optimized
+// grid-indexed lookup agrees with the plain linear scan on the same input.
+// A faster wrong answer is worse than a slow correct one — this test is
+// what makes the optimization trustworthy.
+func TestFindNearestDriverGridIndexed_MatchesFullScan(t *testing.T) {
+	drivers := []store.DriverLocation{
+		{DriverID: "a", Lat: 43.65, Lng: -79.38},
+		{DriverID: "b", Lat: 43.70, Lng: -79.40},
+		{DriverID: "c", Lat: 43.66, Lng: -79.39},
+	}
+	const cellSize = 0.05
+
+	index := BuildGridIndex(drivers, cellSize)
+
+	full, fullOk := FindNearestDriver(43.655, -79.385, drivers)
+	grid, gridOk := FindNearestDriverGridIndexed(43.655, -79.385, index, cellSize)
+
+	if fullOk != gridOk {
+		t.Fatalf("ok mismatch: full=%v grid=%v", fullOk, gridOk)
+	}
+	if full.DriverID != grid.DriverID {
+		t.Errorf("driver mismatch: full scan picked %q, grid-indexed picked %q", full.DriverID, grid.DriverID)
+	}
+}
+
+// BenchmarkFindNearestDriverGridIndexed measures lookup cost only — the
+// index is built once outside the timer, mirroring how a real system would
+// maintain the index incrementally rather than rebuild it per query.
+func BenchmarkFindNearestDriverGridIndexed(b *testing.B) {
+	drivers := make([]store.DriverLocation, 10000)
+	for i := range drivers {
+		drivers[i] = store.DriverLocation{
+			DriverID: "driver",
+			Lat:      43.0 + float64(i)*0.0001,
+			Lng:      -79.0 + float64(i)*0.0001,
+		}
+	}
+
+	const cellSize = 0.05
+	index := BuildGridIndex(drivers, cellSize)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		FindNearestDriverGridIndexed(43.65, -79.38, index, cellSize)
+	}
+}
