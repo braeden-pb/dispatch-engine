@@ -46,11 +46,18 @@ func (h *Handler) PostLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO(you): what validation actually matters here? Empty driver_id?
-	// Lat/lng out of range (-90..90, -180..180)? Decide and add it —
-	// this is the kind of "boring but real" decision interviewers probe.
 	if req.DriverID == "" {
 		http.Error(w, "driver_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Lat < -90 || req.Lat > 90 {
+		http.Error(w, "lat must be between -90 and 90", http.StatusBadRequest)
+		return
+	}
+
+	if req.Lng < -180 || req.Lng > 180 {
+		http.Error(w, "lng must be between -180 and 180", http.StatusBadRequest)
 		return
 	}
 
@@ -82,6 +89,16 @@ func (h *Handler) PostMatch(w http.ResponseWriter, r *http.Request) {
 	var req matchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return
+	}
+
+	if req.RiderLat < -90 || req.RiderLat > 90 {
+		http.Error(w, "rider_lat must be between -90 and 90", http.StatusBadRequest)
+		return
+	}
+
+	if req.RiderLng < -180 || req.RiderLng > 180 {
+		http.Error(w, "rider_lng must be between -180 and 180", http.StatusBadRequest)
 		return
 	}
 
