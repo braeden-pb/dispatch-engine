@@ -2,10 +2,12 @@ package ingest
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
-	"geo-stream-engine/internal/store"
+	"dispatch-engine/internal/match"
+	"dispatch-engine/internal/store"
 )
 
 // Handler wires HTTP requests into the store. This layer is deliberately
@@ -24,6 +26,11 @@ type locationUpdateRequest struct {
 	DriverID string  `json:"driver_id"`
 	Lat      float64 `json:"lat"`
 	Lng      float64 `json:"lng"`
+}
+
+type matchRequest struct {
+	RiderLat float64 `json:"rider_lat"`
+	RiderLng float64 `json:"rider_lng"`
 }
 
 // PostLocation handles POST /drivers/location
@@ -63,4 +70,31 @@ func (h *Handler) PostLocation(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetDrivers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(h.Store.All())
+}
+
+// PostMatch handles POST /match
+// Body: {"rider_lat": 43.65, "rider_lng": -79.38}
+func (h *Handler) PostMatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req matchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return
+	}
+
+	drivers := h.Store.All()
+
+	log.Printf("PostMatch: got %d drivers from store", len(drivers)) // TEMP DEBUG — remove after
+	nearest, ok := match.FindNearestDriver(req.RiderLat, req.RiderLng, drivers)
+	if !ok {
+		http.Error(w, "no drivers available", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(nearest)
 }
