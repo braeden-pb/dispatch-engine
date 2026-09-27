@@ -72,3 +72,22 @@ func TestFindNearestDriver_EmptySlice(t *testing.T) {
 		t.Error("FindNearestDriver with empty slice returned ok=true, want ok=false")
 	}
 }
+
+// BenchmarkFindNearestDriver measures how FindNearestDriver's O(n) scan
+// performs against 10,000 candidate drivers. This is the real, measured
+// baseline to compare against once a geohash-bucketed version exists.
+func BenchmarkFindNearestDriver(b *testing.B) {
+	drivers := make([]store.DriverLocation, 10000)
+	for i := range drivers {
+		drivers[i] = store.DriverLocation{
+			DriverID: "driver",
+			Lat:      43.0 + float64(i)*0.0001,
+			Lng:      -79.0 + float64(i)*0.0001,
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		FindNearestDriver(43.65, -79.38, drivers)
+	}
+}
